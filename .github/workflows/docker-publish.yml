@@ -2,7 +2,7 @@ name: CI · Build & Publish Docker Image
 
 on:
     push:
-        branches: [main]
+        branches: [Master]
 
 jobs:
     build-and-push:
