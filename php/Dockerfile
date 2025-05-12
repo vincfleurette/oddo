@@ -7,7 +7,11 @@ RUN apk add --no-cache       $PHPIZE_DEPS       oniguruma-dev       libzip-dev  
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
-
+# après COPY . .
+RUN mkdir -p /var/www/html/storage \
+ && chown -R www-data:www-data /var/www/html/storage
+ 
+ 
 # Copy only composer files and install dependencies
 COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-interaction --no-scripts

@@ -17,10 +17,11 @@ use Slim\Psr7\Response as SlimResponse;
 use App\OddoApi;
 use App\OddoApiService;
 use App\DTO\AccountWithPositionsDTO;
-
+use Slim\Exception\HttpNotFoundException;
+use Slim\Middleware\ErrorMiddleware;
 // Load environment
 $dotenv = Dotenv::createImmutable(__DIR__ . "/../");
-$dotenv->load();
+$dotenv->safeLoad();
 
 $baseUri = rtrim($_ENV["ODDO_BASE_URI"], "/") . "/";
 $jwtSecret = $_ENV["JWT_SECRET"];
@@ -32,6 +33,22 @@ $cacheTtl = 3600; // 1 hour
 $app = AppFactory::create();
 // Affiche les détails des erreurs et convertit les exceptions en réponse JSON
 /** @var \Slim\App $app */
+$errorMiddleware = new ErrorMiddleware(
+    $app->getCallableResolver(),
+    $app->getResponseFactory(),
+    false, // displayErrorDetails (désactivé en prod)
+    true, // logErrors
+    true // logErrorDetails
+);
+// handler 404 → JSON
+$errorMiddleware->setErrorHandler(HttpNotFoundException::class, function (
+    Psr\Http\Message\ServerRequestInterface $req,
+    Throwable $e
+) use ($app) {
+    $resp = $app->getResponseFactory()->createResponse(404);
+    $resp->getBody()->write(json_encode(["error" => "Not Found"]));
+    return $resp->withHeader("Content-Type", "application/json");
+});
 $app->add($errorMiddleware);
 // Strip trailing slash
 $app->add(function (
