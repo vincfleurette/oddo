@@ -1,12 +1,12 @@
 version: "3.8"
 services:
     php:
-        build:
-            context: ./php
-            dockerfile: Dockerfile
-        # plus de volume ./:/var/www/html
+        image: ghcr.io/vincfleurette/oddoslim-api:latest
+        restart: always
         volumes:
-            - ./storage:/var/www/html/storage # si vous avez besoin de persister storage
+            - /volume1/docker/oddo-storage:/var/www/html/storage
+        environment:
+            - COMPOSER_ALLOW_SUPERUSER=1
         networks:
             - webnet
 

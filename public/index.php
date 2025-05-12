@@ -31,13 +31,7 @@ $cacheTtl = 3600; // 1 hour
 
 $app = AppFactory::create();
 // Affiche les détails des erreurs et convertit les exceptions en réponse JSON
-$errorMiddleware = new ErrorMiddleware(
-    $app->getCallableResolver(),
-    $app->getResponseFactory(),
-    true, // displayErrorDetails
-    true, // logErrors
-    true // logErrorDetails
-);
+/** @var \Slim\App $app */
 $app->add($errorMiddleware);
 // Strip trailing slash
 $app->add(function (
