@@ -1,30 +1,30 @@
 name: CI · Build & Publish Docker Image
 
 on:
-  push:
-    branches: [ main ]
+    push:
+        branches: [main]
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+    build-and-push:
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.CR_PAT }}
+            - name: Log in to GHCR
+              uses: docker/login-action@v2
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.CR_PAT }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./php/Dockerfile
-          push: true
-          tags: ghcr.io/${{ github.repository_owner }}/oddoslim-api:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            - name: Build and push
+              uses: docker/build-push-action@v4
+              with:
+                  context: .
+                  file: ./php/Dockerfile
+                  push: true
+                  tags: ghcr.io/${{ github.repository_owner }}/oddoslim-api:latest
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
