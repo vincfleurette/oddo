@@ -4,7 +4,9 @@ services:
         image: ghcr.io/vincfleurette/oddoslim-api:latest
         restart: always
         volumes:
-            - /volume1/docker/oddo-storage:/var/www/html/storage
+            - ./public:/var/www/html/public:ro
+            - ./.env:/var/www/html/.env:ro
+            - ./storage:/var/www/html/storage
         environment:
             - COMPOSER_ALLOW_SUPERUSER=1
         networks:
