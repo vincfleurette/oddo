@@ -14,6 +14,9 @@ class PositionDTO
     public float $pmvr;
     public float $weightMinute;
     public string $reportingAssetClassCode;
+    public float $performance; // Nouveau champ performance
+    public string $classActif; // Nouveau champ classe d'actif
+    public float $closingPriceInListingCurrency; // Prix de clôture
 
     public function __construct(array $d)
     {
@@ -31,6 +34,13 @@ class PositionDTO
         $this->pmvr = floatval($d["pmvr"] ?? 0);
         $this->weightMinute = floatval($d["weightMinute"] ?? 0);
         $this->reportingAssetClassCode = $d["reportingAssetClassCode"] ?? "";
+
+        // Nouveaux champs
+        $this->performance = floatval($d["perf"] ?? 0); // Correction: "perf" au lieu de "performance"
+        $this->classActif = $d["classActif"] ?? "";
+        $this->closingPriceInListingCurrency = floatval(
+            $d["closingPriceInListingCurrency"] ?? 0
+        );
     }
 
     public function toArray(): array
@@ -46,6 +56,36 @@ class PositionDTO
             "pmvr" => $this->pmvr,
             "weightMinute" => $this->weightMinute,
             "reportingAssetClassCode" => $this->reportingAssetClassCode,
+            "performance" => $this->performance,
+            "classActif" => $this->classActif,
+            "closingPriceInListingCurrency" =>
+                $this->closingPriceInListingCurrency,
+        ];
+    }
+
+    /**
+     * Retourne la performance formatée avec couleur
+     */
+    public function getFormattedPerformance(): array
+    {
+        return [
+            "value" => $this->performance,
+            "formatted" => sprintf("%+.2f%%", $this->performance),
+            "isPositive" => $this->performance >= 0,
+            "color" => $this->performance >= 0 ? "green" : "red",
+        ];
+    }
+
+    /**
+     * Retourne les plus/moins values formatées
+     */
+    public function getFormattedPMVL(): array
+    {
+        return [
+            "value" => $this->pmvl,
+            "formatted" => sprintf("%+.2f €", $this->pmvl),
+            "isPositive" => $this->pmvl >= 0,
+            "color" => $this->pmvl >= 0 ? "green" : "red",
         ];
     }
 }

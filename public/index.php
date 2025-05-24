@@ -143,58 +143,406 @@ $app->group("", function ($group) use ($baseUri, $cachePath, $cacheTtl) {
         $cachePath,
         $cacheTtl
     ) {
-        // load JWT claims
+        // Charger les claims JWT
         $jwt = $req->getAttribute("jwt");
         $oddoToken = $jwt->oddo;
         $oddoUuid = $jwt->uuid;
 
-        // injecter le token
+        // Injecter le token
         $api = new OddoApi("", "", $baseUri);
         $api->setToken($oddoToken);
 
-        // n’injecte l’UUID que s’il existe
+        // N'injecte l'UUID que s'il existe
         if ($oddoUuid !== null) {
             $api->setUuid($oddoUuid);
         }
 
-        // attempt cache
+        // Tenter le cache
         if (file_exists($cachePath)) {
             $json = json_decode((string) file_get_contents($cachePath), true);
             if (isset($json["timestamp"], $json["data"])) {
                 $ts = strtotime($json["timestamp"]);
                 if (time() - $ts < $cacheTtl) {
-                    $res->getBody()->write(json_encode($json["data"]));
+                    // Retourner les données en cache avec stats
+                    $cachedResponse = addPerformanceStats($json["data"]);
+                    $res->getBody()->write(json_encode($cachedResponse));
                     return $res->withHeader("Content-Type", "application/json");
                 }
             }
         }
 
-        // fresh fetch
+        // Récupération fraîche
         $api = new OddoApi("", "", $baseUri);
         $api->setToken($oddoToken);
         $api->setUuid($oddoUuid);
 
         $service = new OddoApiService($api);
         $dtos = $service->fetchAccountsWithPositions();
-        $data = array_map(
+        $accounts = array_map(
             fn(AccountWithPositionsDTO $dto) => $dto->toArray(),
             $dtos
         );
 
+        // Sauvegarder en cache
         if (!is_dir(dirname($cachePath))) {
             mkdir(dirname($cachePath), 0755, true);
         }
         file_put_contents(
             $cachePath,
             json_encode(
-                ["timestamp" => date("c"), "data" => $data],
+                ["timestamp" => date("c"), "data" => $accounts],
                 JSON_PRETTY_PRINT
             )
         );
 
-        $res->getBody()->write(json_encode($data));
+        // Ajouter les statistiques de performance
+        $responseWithStats = addPerformanceStats($accounts);
+
+        $res->getBody()->write(json_encode($responseWithStats));
         return $res->withHeader("Content-Type", "application/json");
     });
 })->add($jwtMiddleware);
 
+// Route pour invalider le cache
+$app->delete("/cache", function (Request $req, Response $res) use ($cachePath) {
+    $deleted = false;
+    $message = "";
+
+    if (file_exists($cachePath)) {
+        if (unlink($cachePath)) {
+            $deleted = true;
+            $message = "Cache invalidated successfully";
+        } else {
+            $message = "Failed to delete cache file";
+        }
+    } else {
+        $message = "Cache file does not exist";
+    }
+
+    $response = [
+        "success" => $deleted,
+        "message" => $message,
+        "cachePath" => $cachePath,
+        "timestamp" => date("c"),
+    ];
+
+    $res->getBody()->write(json_encode($response));
+    return $res->withHeader("Content-Type", "application/json");
+})->add($jwtMiddleware);
+
+// Route pour obtenir les informations du cache
+$app->get("/cache/info", function (Request $req, Response $res) use (
+    $cachePath,
+    $cacheTtl
+) {
+    $info = [
+        "cachePath" => $cachePath,
+        "cacheExists" => file_exists($cachePath),
+        "cacheTtl" => $cacheTtl,
+        "cacheTtlHuman" => gmdate("H:i:s", $cacheTtl),
+    ];
+
+    if (file_exists($cachePath)) {
+        $json = json_decode((string) file_get_contents($cachePath), true);
+        if (isset($json["timestamp"])) {
+            $cacheTimestamp = strtotime($json["timestamp"]);
+            $age = time() - $cacheTimestamp;
+            $isExpired = $age >= $cacheTtl;
+
+            $info["cacheTimestamp"] = $json["timestamp"];
+            $info["cacheAge"] = $age;
+            $info["cacheAgeHuman"] = gmdate("H:i:s", $age);
+            $info["isExpired"] = $isExpired;
+            $info["expiresIn"] = max(0, $cacheTtl - $age);
+            $info["expiresInHuman"] = gmdate("H:i:s", max(0, $cacheTtl - $age));
+            $info["accountsCount"] = count($json["data"] ?? []);
+        }
+
+        $info["fileSizeBytes"] = filesize($cachePath);
+        $info["fileSizeHuman"] = formatBytes(filesize($cachePath));
+    }
+
+    $res->getBody()->write(json_encode($info, JSON_PRETTY_PRINT));
+    return $res->withHeader("Content-Type", "application/json");
+})->add($jwtMiddleware);
+
+// Route pour forcer le refresh du cache
+$app->post("/cache/refresh", function (Request $req, Response $res) use (
+    $baseUri,
+    $cachePath,
+    $cacheTtl
+) {
+    // Charger les claims JWT
+    $jwt = $req->getAttribute("jwt");
+    $oddoToken = $jwt->oddo;
+    $oddoUuid = $jwt->uuid;
+
+    // Supprimer l'ancien cache
+    if (file_exists($cachePath)) {
+        unlink($cachePath);
+    }
+
+    // Récupérer des données fraîches
+    $api = new OddoApi("", "", $baseUri);
+    $api->setToken($oddoToken);
+    if ($oddoUuid !== null) {
+        $api->setUuid($oddoUuid);
+    }
+
+    $service = new OddoApiService($api);
+    $dtos = $service->fetchAccountsWithPositions();
+    $data = array_map(
+        fn(AccountWithPositionsDTO $dto) => $dto->toArray(),
+        $dtos
+    );
+
+    // Sauvegarder le nouveau cache
+    if (!is_dir(dirname($cachePath))) {
+        mkdir(dirname($cachePath), 0755, true);
+    }
+    file_put_contents(
+        $cachePath,
+        json_encode(
+            ["timestamp" => date("c"), "data" => $data],
+            JSON_PRETTY_PRINT
+        )
+    );
+
+    $response = [
+        "success" => true,
+        "message" => "Cache refreshed successfully",
+        "accountsCount" => count($data),
+        "timestamp" => date("c"),
+        "cachePath" => $cachePath,
+    ];
+
+    $res->getBody()->write(json_encode($response));
+    return $res->withHeader("Content-Type", "application/json");
+})->add($jwtMiddleware);
+
+// Fonction utilitaire pour formater les tailles de fichier
+function formatBytes($bytes, $precision = 2)
+{
+    $units = ["B", "KB", "MB", "GB", "TB"];
+
+    for ($i = 0; $bytes > 1024; $i++) {
+        $bytes /= 1024;
+    }
+
+    return round($bytes, $precision) . " " . $units[$i];
+}
+
+/**
+ * Ajoute les statistiques de performance aux données des comptes
+ */
+function addPerformanceStats(array $accounts): array
+{
+    $stats = [
+        "totalValue" => 0,
+        "totalPMVL" => 0,
+        "totalPMVR" => 0,
+        "weightedPerformance" => 0,
+        "totalWeight" => 0,
+        "positionsCount" => 0,
+        "accountsCount" => count($accounts),
+        "performanceByAssetClass" => [],
+        "topPerformers" => [],
+        "worstPerformers" => [],
+        "lastUpdate" => date("c"),
+    ];
+
+    $allPositions = [];
+
+    // Calculer les statistiques pour chaque compte
+    foreach ($accounts as &$account) {
+        $accountStats = [
+            "totalPMVL" => 0,
+            "weightedPerformance" => 0,
+            "totalWeight" => 0,
+            "positionsCount" => count($account["positions"]),
+        ];
+
+        $stats["totalValue"] += $account["value"];
+
+        foreach ($account["positions"] as $position) {
+            $stats["positionsCount"]++;
+            $pmvl = $position["pmvl"] ?? 0;
+            $pmvr = $position["pmvr"] ?? 0;
+            $weight = $position["weightMinute"] ?? 0;
+
+            // CORRECTION: utiliser 'perf' au lieu de 'performance'
+            $performance = $position["perf"] ?? 0;
+
+            // Stats globales
+            $stats["totalPMVL"] += $pmvl;
+            $stats["totalPMVR"] += $pmvr;
+            $stats["weightedPerformance"] += $performance * $weight;
+            $stats["totalWeight"] += $weight;
+
+            // Stats par compte
+            $accountStats["totalPMVL"] += $pmvl;
+            $accountStats["weightedPerformance"] += $performance * $weight;
+            $accountStats["totalWeight"] += $weight;
+
+            // Performance par classe d'actif
+            $assetClass = $position["classActif"] ?? "Unknown";
+            if (!isset($stats["performanceByAssetClass"][$assetClass])) {
+                $stats["performanceByAssetClass"][$assetClass] = [
+                    "totalValue" => 0,
+                    "totalWeight" => 0,
+                    "weightedPerformance" => 0,
+                    "positionsCount" => 0,
+                ];
+            }
+
+            $stats["performanceByAssetClass"][$assetClass]["totalValue"] +=
+                $position["valeurMarcheDeviseSecurite"] ?? 0;
+            $stats["performanceByAssetClass"][$assetClass][
+                "totalWeight"
+            ] += $weight;
+            $stats["performanceByAssetClass"][$assetClass][
+                "weightedPerformance"
+            ] += $performance * $weight;
+            $stats["performanceByAssetClass"][$assetClass]["positionsCount"]++;
+
+            // Stocker pour les top/worst performers
+            $allPositions[] = array_merge($position, [
+                "accountNumber" => $account["accountNumber"],
+                "performance" => $performance, // Normaliser le nom du champ
+            ]);
+        }
+
+        // Calculer la performance moyenne pondérée du compte
+        if ($accountStats["totalWeight"] > 0) {
+            $accountStats["weightedPerformance"] =
+                $accountStats["weightedPerformance"] /
+                $accountStats["totalWeight"];
+        }
+
+        // Ajouter les stats au compte
+        $account["stats"] = array_merge($accountStats, [
+            "formatted" => [
+                "totalPMVL" => sprintf("%+.2f €", $accountStats["totalPMVL"]),
+                "weightedPerformance" => sprintf(
+                    "%+.2f%%",
+                    $accountStats["weightedPerformance"]
+                ),
+                "pmvlColor" =>
+                    $accountStats["totalPMVL"] >= 0 ? "green" : "red",
+                "performanceColor" =>
+                    $accountStats["weightedPerformance"] >= 0 ? "green" : "red",
+            ],
+        ]);
+    }
+
+    // Calculer la performance moyenne pondérée globale
+    if ($stats["totalWeight"] > 0) {
+        $stats["weightedPerformance"] =
+            $stats["weightedPerformance"] / $stats["totalWeight"];
+    }
+
+    // Calculer la performance moyenne par classe d'actif
+    foreach ($stats["performanceByAssetClass"] as $class => &$classStats) {
+        if ($classStats["totalWeight"] > 0) {
+            $classStats["averagePerformance"] =
+                $classStats["weightedPerformance"] / $classStats["totalWeight"];
+        } else {
+            $classStats["averagePerformance"] = 0;
+        }
+
+        // Ajouter le formatage
+        $classStats["formatted"] = [
+            "averagePerformance" => sprintf(
+                "%+.2f%%",
+                $classStats["averagePerformance"]
+            ),
+            "totalValue" => number_format($classStats["totalValue"], 2) . " €",
+            "performanceColor" =>
+                $classStats["averagePerformance"] >= 0 ? "green" : "red",
+        ];
+    }
+
+    // Trier les positions par performance
+    usort($allPositions, function ($a, $b) {
+        $perfA = $a["performance"] ?? 0;
+        $perfB = $b["performance"] ?? 0;
+        return $perfB <=> $perfA;
+    });
+
+    // Top 5 performers
+    $stats["topPerformers"] = array_slice(
+        array_map(function ($pos) {
+            $performance = $pos["performance"] ?? 0;
+            return [
+                "isinCode" => $pos["isinCode"] ?? "",
+                "libInstrument" => $pos["libInstrument"] ?? "",
+                "performance" => $performance,
+                "valeurMarcheDeviseSecurite" =>
+                    $pos["valeurMarcheDeviseSecurite"] ?? 0,
+                "weightMinute" => $pos["weightMinute"] ?? 0,
+                "accountNumber" => $pos["accountNumber"] ?? "",
+                "classActif" => $pos["classActif"] ?? "",
+                "formatted" => [
+                    "performance" => sprintf("%+.2f%%", $performance),
+                    "value" =>
+                        number_format(
+                            $pos["valeurMarcheDeviseSecurite"] ?? 0,
+                            2
+                        ) . " €",
+                    "weight" => sprintf("%.1f%%", $pos["weightMinute"] ?? 0),
+                    "performanceColor" => $performance >= 0 ? "green" : "red",
+                ],
+            ];
+        }, $allPositions),
+        0,
+        5
+    );
+
+    // Worst 5 performers
+    $stats["worstPerformers"] = array_slice(
+        array_map(function ($pos) {
+            $performance = $pos["performance"] ?? 0;
+            return [
+                "isinCode" => $pos["isinCode"] ?? "",
+                "libInstrument" => $pos["libInstrument"] ?? "",
+                "performance" => $performance,
+                "valeurMarcheDeviseSecurite" =>
+                    $pos["valeurMarcheDeviseSecurite"] ?? 0,
+                "weightMinute" => $pos["weightMinute"] ?? 0,
+                "accountNumber" => $pos["accountNumber"] ?? "",
+                "classActif" => $pos["classActif"] ?? "",
+                "formatted" => [
+                    "performance" => sprintf("%+.2f%%", $performance),
+                    "value" =>
+                        number_format(
+                            $pos["valeurMarcheDeviseSecurite"] ?? 0,
+                            2
+                        ) . " €",
+                    "weight" => sprintf("%.1f%%", $pos["weightMinute"] ?? 0),
+                    "performanceColor" => $performance >= 0 ? "green" : "red",
+                ],
+            ];
+        }, array_reverse($allPositions)),
+        0,
+        5
+    );
+
+    // Ajouter des métadonnées formatées
+    $stats["formatted"] = [
+        "totalValue" => number_format($stats["totalValue"], 2) . " €",
+        "totalPMVL" => sprintf("%+.2f €", $stats["totalPMVL"]),
+        "weightedPerformance" => sprintf(
+            "%+.2f%%",
+            $stats["weightedPerformance"]
+        ),
+        "pmvlColor" => $stats["totalPMVL"] >= 0 ? "green" : "red",
+        "performanceColor" =>
+            $stats["weightedPerformance"] >= 0 ? "green" : "red",
+    ];
+
+    return [
+        "accounts" => $accounts,
+        "portfolio" => $stats,
+    ];
+}
 $app->run();
