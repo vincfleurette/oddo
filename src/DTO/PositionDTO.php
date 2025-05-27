@@ -14,8 +14,8 @@ class PositionDTO
     public float $pmvr;
     public float $weightMinute;
     public string $reportingAssetClassCode;
-    public float $performance; // Nouveau champ performance
-    public string $classActif; // Nouveau champ classe d'actif
+    public float $performance; // Performance interne
+    public string $classActif; // Classe d'actif
     public float $closingPriceInListingCurrency; // Prix de clôture
 
     public function __construct(array $d)
@@ -36,7 +36,7 @@ class PositionDTO
         $this->reportingAssetClassCode = $d["reportingAssetClassCode"] ?? "";
 
         // Nouveaux champs
-        $this->performance = floatval($d["perf"] ?? 0); // Correction: "perf" au lieu de "performance"
+        $this->performance = floatval($d["perf"] ?? 0); // Lecture depuis "perf"
         $this->classActif = $d["classActif"] ?? "";
         $this->closingPriceInListingCurrency = floatval(
             $d["closingPriceInListingCurrency"] ?? 0
@@ -56,7 +56,9 @@ class PositionDTO
             "pmvr" => $this->pmvr,
             "weightMinute" => $this->weightMinute,
             "reportingAssetClassCode" => $this->reportingAssetClassCode,
-            "performance" => $this->performance,
+            // CORRECTION: Garder "perf" pour la compatibilité avec addPerformanceStats
+            "perf" => $this->performance,
+            "performance" => $this->performance, // Aussi disponible sous ce nom
             "classActif" => $this->classActif,
             "closingPriceInListingCurrency" =>
                 $this->closingPriceInListingCurrency,

@@ -335,6 +335,9 @@ function formatBytes($bytes, $precision = 2)
 /**
  * Ajoute les statistiques de performance aux données des comptes
  */
+/**
+ * Ajoute les statistiques de performance aux données des comptes
+ */
 function addPerformanceStats(array $accounts): array
 {
     $stats = [
@@ -370,8 +373,8 @@ function addPerformanceStats(array $accounts): array
             $pmvr = $position["pmvr"] ?? 0;
             $weight = $position["weightMinute"] ?? 0;
 
-            // CORRECTION: utiliser 'perf' au lieu de 'performance'
-            $performance = $position["perf"] ?? 0;
+            // CORRECTION: Essayer d'abord "performance", puis "perf" en fallback
+            $performance = $position["performance"] ?? ($position["perf"] ?? 0);
 
             // Stats globales
             $stats["totalPMVL"] += $pmvl;
@@ -434,6 +437,8 @@ function addPerformanceStats(array $accounts): array
             ],
         ]);
     }
+
+    // ... rest of the function remains the same
 
     // Calculer la performance moyenne pondérée globale
     if ($stats["totalWeight"] > 0) {
