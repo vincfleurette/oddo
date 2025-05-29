@@ -1,61 +1,90 @@
 <?php
-// Redis Storage Driver
-class RedisStorageDriver implements StorageDriverInterface
+
+namespace App\Storage\Drivers;
+
+use App\Storage\StorageDriverInterface;
+
+class FileStorageDriver implements StorageDriverInterface
 {
-    private \Redis $redis;
+    private string $path;
 
     public function __construct(array $config)
     {
-        $this->redis = new \Redis();
-        $this->redis->connect(
-            $config["host"] ?? "127.0.0.1",
-            $config["port"] ?? 6379
-        );
+        $this->path = $config["path"] ?? __DIR__ . "/../../../storage";
 
-        if (!empty($config["password"])) {
-            $this->redis->auth($config["password"]);
-        }
-
-        if (!empty($config["database"])) {
-            $this->redis->select($config["database"]);
+        if (!is_dir($this->path)) {
+            mkdir($this->path, 0755, true);
         }
     }
 
     public function set(string $key, array $data, ?int $ttl = null): bool
     {
-        $result = $this->redis->set($key, json_encode($data));
+        $filePath = $this->getFilePath($key);
+        $dir = dirname($filePath);
 
-        if ($result && $ttl > 0) {
-            $this->redis->expire($key, $ttl);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
         }
 
-        return $result;
+        return file_put_contents(
+            $filePath,
+            json_encode($data, JSON_PRETTY_PRINT)
+        ) !== false;
     }
 
     public function get(string $key): ?array
     {
-        $data = $this->redis->get($key);
-        return $data ? json_decode($data, true) : null;
+        $filePath = $this->getFilePath($key);
+
+        if (!file_exists($filePath)) {
+            return null;
+        }
+
+        $content = file_get_contents($filePath);
+        return json_decode($content, true);
     }
 
     public function delete(string $key): bool
     {
-        return $this->redis->del($key) > 0;
+        $filePath = $this->getFilePath($key);
+
+        if (file_exists($filePath)) {
+            return unlink($filePath);
+        }
+
+        return true;
     }
 
     public function exists(string $key): bool
     {
-        return $this->redis->exists($key) > 0;
+        return file_exists($this->getFilePath($key));
     }
 
     public function clear(string $pattern = "*"): bool
     {
-        $keys = $this->redis->keys($pattern);
-        return empty($keys) || $this->redis->del($keys) > 0;
+        $files = glob($this->path . "/" . str_replace("*", "*.json", $pattern));
+        $success = true;
+
+        foreach ($files as $file) {
+            if (!unlink($file)) {
+                $success = false;
+            }
+        }
+
+        return $success;
     }
 
     public function getSize(string $key): int
     {
-        return strlen($this->redis->get($key) ?? "");
+        $filePath = $this->getFilePath($key);
+        return file_exists($filePath) ? filesize($filePath) : 0;
+    }
+
+    private function getFilePath(string $key): string
+    {
+        return $this->path .
+            "/" .
+            str_replace(["/", "\\"], "_", $key) .
+            ".json";
     }
 }

@@ -1,5 +1,14 @@
 {
+  "name": "oddoslim/api",
+  "description": "API REST moderne pour l'intégration avec les services Oddo",
+  "type": "project",
+  "license": "MIT",
+  "authors": [{
+    "name": "Your Name",
+    "email": "your.email@example.com"
+  }],
   "require": {
+    "php": ">=8.1",
     "slim/slim": "^4.0",
     "slim/psr7": "^1.0",
     "symfony/yaml": "^6.0",
@@ -10,20 +19,66 @@
     "php-di/php-di": "^7.0",
     "predis/predis": "^2.0"
   },
-  "autoload": {
-    "psr-4": {
-      "App\\": "src/"
-    }
-  },
   "require-dev": {
     "phpunit/phpunit": "^10.0",
     "phpstan/phpstan": "^1.10",
     "squizlabs/php_codesniffer": "^3.7"
   },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "App\\Tests\\": "tests/"
+    }
+  },
   "scripts": {
     "test": "phpunit",
-    "analyse": "phpstan analyse src",
-    "cs-check": "phpcs src",
-    "cs-fix": "phpcbf src"
-  }
+    "test:coverage": "phpunit --coverage-html coverage/",
+    "analyse": "phpstan analyse src --level=8",
+    "cs-check": "phpcs src --standard=PSR12",
+    "cs-fix": "phpcbf src --standard=PSR12",
+    "clean": "php scripts/cleanup.php",
+    "setup": [
+      "@composer install",
+      "@clean",
+      "php -r \"if (!file_exists('.env')) copy('.env.example', '.env');\""
+    ],
+    "prod-setup": [
+      "@composer install --no-dev --optimize-autoloader",
+      "@clean"
+    ],
+    "dev": [
+      "@setup",
+      "php -S localhost:8000 -t public/"
+    ],
+    "quality": [
+      "@analyse",
+      "@cs-check",
+      "@test"
+    ]
+  },
+  "scripts-descriptions": {
+    "test": "Lance les tests unitaires",
+    "test:coverage": "Lance les tests avec rapport de couverture",
+    "analyse": "Analyse statique du code avec PHPStan",
+    "cs-check": "Vérifie le style de code PSR-12",
+    "cs-fix": "Corrige automatiquement le style de code",
+    "clean": "Nettoie les fichiers de debug et optimise",
+    "setup": "Installation complète pour développement",
+    "prod-setup": "Installation optimisée pour production",
+    "dev": "Lance le serveur de développement",
+    "quality": "Exécute tous les contrôles qualité"
+  },
+  "config": {
+    "optimize-autoloader": true,
+    "sort-packages": true,
+    "allow-plugins": {
+      "php-http/discovery": true
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
 }

@@ -1,5 +1,7 @@
 <?php
 
+namespace App\Storage;
+
 interface StorageDriverInterface
 {
     public function set(string $key, array $data, ?int $ttl = null): bool;

@@ -1,8 +1,6 @@
 <?php
 
-ini_set("display_errors", 1);
-ini_set("display_startup_errors", 1);
-error_reporting(E_ALL);
+declare(strict_types=1);
 
 require __DIR__ . "/../vendor/autoload.php";
 
@@ -10,42 +8,34 @@ use Dotenv\Dotenv;
 use Slim\Factory\AppFactory;
 use DI\Container;
 use App\Config\AppConfig;
-use App\Middleware\JwtMiddleware;
 use App\Middleware\ErrorHandlerMiddleware;
 use App\Routes\AuthRoutes;
 use App\Routes\AccountRoutes;
 use App\Routes\CacheRoutes;
 use App\Routes\HealthRoutes;
 
-// Load environment
+// Load environment variables
 $dotenv = Dotenv::createImmutable(__DIR__ . "/../");
 $dotenv->safeLoad();
 
 // Create DI container
 $container = new Container();
 
-// Load configuration
+// Register configuration
 $config = new AppConfig();
 $container->set(AppConfig::class, $config);
 
+// Register storage manager
+$container->set(\App\Storage\StorageManager::class, function () use ($config) {
+    return new \App\Storage\StorageManager($config->getStorageConfig());
+});
+
+// Register API client
+$container->set(\App\External\OddoApiClient::class, function () use ($config) {
+    return new \App\External\OddoApiClient($config->getOddoConfig());
+});
+
 // Register services
-$container->set(\App\Services\OddoApiService::class, function ($container) use (
-    $config
-) {
-    return new \App\Services\OddoApiService(
-        new \App\External\OddoApiClient($config->getOddoConfig())
-    );
-});
-
-$container->set(\App\Services\AuthService::class, function ($container) use (
-    $config
-) {
-    return new \App\Services\AuthService(
-        $container->get(\App\External\OddoApiClient::class),
-        $config->getJwtSecret()
-    );
-});
-
 $container->set(\App\Services\CacheService::class, function ($container) use (
     $config
 ) {
@@ -55,26 +45,33 @@ $container->set(\App\Services\CacheService::class, function ($container) use (
     );
 });
 
-$container->set(\App\Services\PortfolioService::class, function ($container) {
+$container->set(\App\Services\AuthService::class, function () use ($config) {
+    $apiClient = new \App\External\OddoApiClient($config->getOddoConfig());
+    return new \App\Services\AuthService($apiClient, $config->getJwtSecret());
+});
+
+$container->set(\App\Services\OddoApiService::class, function ($container) {
+    return new \App\Services\OddoApiService(
+        $container->get(\App\External\OddoApiClient::class)
+    );
+});
+
+$container->set(\App\Services\PortfolioService::class, function () {
     return new \App\Services\PortfolioService();
 });
 
-$container->set(\App\Storage\StorageManager::class, function ($container) use (
-    $config
-) {
-    return new \App\Storage\StorageManager($config->getStorageConfig());
-});
-
-// Create app with container
+// Create Slim application
 AppFactory::setContainer($container);
 $app = AppFactory::create();
 
-// Add middlewares
+// Add middleware
 $app->add(new ErrorHandlerMiddleware());
+
+// Add trailing slash middleware
 $app->add(function ($request, $handler) {
-    // Strip trailing slash middleware
     $uri = $request->getUri();
     $path = $uri->getPath();
+
     if ($path !== "/" && str_ends_with($path, "/")) {
         $newUri = $uri->withPath(rtrim($path, "/"));
         $response = new \Slim\Psr7\Response();
@@ -82,6 +79,7 @@ $app->add(function ($request, $handler) {
             ->withHeader("Location", (string) $newUri)
             ->withStatus(301);
     }
+
     return $handler->handle($request);
 });
 
@@ -91,4 +89,5 @@ $app->add(function ($request, $handler) {
 (new AccountRoutes())->register($app, $container);
 (new CacheRoutes())->register($app, $container);
 
+// Run application
 $app->run();

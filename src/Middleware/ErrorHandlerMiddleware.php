@@ -1,8 +1,7 @@
 <?php
 
-/**
- * Middleware de gestion d'erreurs
- */
+declare(strict_types=1);
+
 namespace App\Middleware;
 
 use Psr\Http\Message\ServerRequestInterface as Request;
@@ -11,6 +10,9 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Slim\Exception\HttpNotFoundException;
 use Slim\Psr7\Response as SlimResponse;
 
+/**
+ * Middleware de gestion d'erreurs globales
+ */
 class ErrorHandlerMiddleware
 {
     public function __invoke(
@@ -29,7 +31,12 @@ class ErrorHandlerMiddleware
     private function notFoundResponse(): Response
     {
         $response = new SlimResponse();
-        $response->getBody()->write(json_encode(["error" => "Not Found"]));
+        $data = [
+            "error" => "Not Found",
+            "message" => "The requested resource was not found",
+        ];
+
+        $response->getBody()->write(json_encode($data));
         return $response
             ->withStatus(404)
             ->withHeader("Content-Type", "application/json");
@@ -43,11 +50,13 @@ class ErrorHandlerMiddleware
             "message" => $e->getMessage(),
         ];
 
-        // En développement, ajouter plus de détails
-        if ($_ENV["APP_ENV"] ?? "production" !== "production") {
-            $data["file"] = $e->getFile();
-            $data["line"] = $e->getLine();
-            $data["trace"] = $e->getTraceAsString();
+        // Ajouter des détails de debug uniquement en développement
+        if (($_ENV["APP_ENV"] ?? "production") === "development") {
+            $data["debug"] = [
+                "file" => $e->getFile(),
+                "line" => $e->getLine(),
+                "type" => get_class($e),
+            ];
         }
 
         $response->getBody()->write(json_encode($data));

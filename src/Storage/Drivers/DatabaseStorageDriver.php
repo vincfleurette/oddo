@@ -1,6 +1,9 @@
 <?php
 
-// Database Storage Driver
+namespace App\Storage\Drivers;
+
+use App\Storage\StorageDriverInterface;
+
 class DatabaseStorageDriver implements StorageDriverInterface
 {
     private \PDO $pdo;

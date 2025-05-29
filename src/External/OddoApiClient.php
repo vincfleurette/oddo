@@ -1,32 +1,45 @@
 <?php
 
-/**
- * Client API Oddo refactorisé
- */
+declare(strict_types=1);
+
 namespace App\External;
 
 use GuzzleHttp\Client;
 use App\DTO\AccountDTO;
 
+/**
+ * Client API Oddo avec support mode mock pour développement
+ */
 class OddoApiClient implements OddoApiClientInterface
 {
-    private Client $client;
+    private ?Client $client = null;
     private ?string $token = null;
     private ?string $uuid = null;
     private array $config;
+    private bool $mockMode = false;
 
     public function __construct(array $config)
     {
         $this->config = $config;
-        $this->client = new Client([
-            "base_uri" => $config["base_uri"],
-            "http_errors" => false,
-            "timeout" => 30,
-        ]);
+
+        // Activer le mode mock si l'URL contient "your-oddo-api-url" (URL d'exemple)
+        if (strpos($config["base_uri"], "your-oddo-api-url") !== false) {
+            $this->mockMode = true;
+        } else {
+            $this->client = new Client([
+                "base_uri" => $config["base_uri"],
+                "http_errors" => false,
+                "timeout" => 30,
+            ]);
+        }
     }
 
     public function login(string $username, string $password): bool
     {
+        if ($this->mockMode) {
+            return $this->mockLogin($username, $password);
+        }
+
         try {
             $response = $this->client->post("core/Login", [
                 "json" => [
@@ -73,6 +86,10 @@ class OddoApiClient implements OddoApiClientInterface
 
     public function getAccounts(): array
     {
+        if ($this->mockMode) {
+            return $this->getMockAccounts();
+        }
+
         $response = $this->request("POST", "accounts/FindLoginAccounts", [
             "CodeBureau" => "",
             "selectedFields" => [
@@ -106,6 +123,10 @@ class OddoApiClient implements OddoApiClientInterface
         string $accountNumber,
         ?string $arreteAu = null
     ): array {
+        if ($this->mockMode) {
+            return $this->getMockPositions($accountNumber);
+        }
+
         if ($arreteAu === null) {
             $arreteAu = $this->getLastBusinessDay();
         }
@@ -137,12 +158,83 @@ class OddoApiClient implements OddoApiClientInterface
         return $response["values"] ?? [];
     }
 
+    /**
+     * Mock login pour le développement
+     */
+    private function mockLogin(string $username, string $password): bool
+    {
+        if ($username === "demo" && $password === "demo") {
+            $this->token = "mock_token_" . time();
+            $this->uuid = "mock_uuid_" . uniqid();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Comptes fictifs pour le développement
+     */
+    private function getMockAccounts(): array
+    {
+        return [
+            new AccountDTO([
+                "accountNumber" => "DEMO001",
+                "label" => "Compte Démo 1",
+                "value" => 25000.5,
+            ]),
+            new AccountDTO([
+                "accountNumber" => "DEMO002",
+                "label" => "Compte Démo 2",
+                "value" => 15750.25,
+            ]),
+        ];
+    }
+
+    /**
+     * Positions fictives pour le développement
+     */
+    private function getMockPositions(string $accountNumber): array
+    {
+        return [
+            [
+                "isinCode" => "FR0000120271",
+                "libInstrument" => "Total SE",
+                "valorisationAchatNette" => 5000.0,
+                "valeurMarcheDeviseSecurite" => 5250.0,
+                "dateArrete" => date("Y-m-d"),
+                "quantityMinute" => 100.0,
+                "pmvl" => 250.0,
+                "pmvr" => 0.0,
+                "weightMinute" => 25.0,
+                "reportingAssetClassCode" => "EQUITY",
+                "perf" => 5.0,
+                "classActif" => "Actions",
+                "closingPriceInListingCurrency" => 52.5,
+            ],
+            [
+                "isinCode" => "FR0000131906",
+                "libInstrument" => "LVMH",
+                "valorisationAchatNette" => 3000.0,
+                "valeurMarcheDeviseSecurite" => 3150.0,
+                "dateArrete" => date("Y-m-d"),
+                "quantityMinute" => 50.0,
+                "pmvl" => 150.0,
+                "pmvr" => 0.0,
+                "weightMinute" => 15.0,
+                "reportingAssetClassCode" => "EQUITY",
+                "perf" => 5.0,
+                "classActif" => "Actions",
+                "closingPriceInListingCurrency" => 63.0,
+            ],
+        ];
+    }
+
     private function getLastBusinessDay(): string
     {
         $date = new \DateTime("today");
         do {
             $date->modify("-1 day");
-        } while (in_array((int) $date->format("N"), [6, 7])); // Skip weekends
+        } while (in_array((int) $date->format("N"), [6, 7]));
 
         return $date->format("Y-m-d");
     }
@@ -152,12 +244,17 @@ class OddoApiClient implements OddoApiClientInterface
         string $endpoint,
         array $data = []
     ): ?array {
-        // Auto-login si pas de token
+        if ($this->mockMode) {
+            throw new \RuntimeException(
+                "Mock mode: Real API calls not supported"
+            );
+        }
+
         if (!$this->token) {
             throw new \RuntimeException("No authentication token available");
         }
 
-        $call = function () use ($method, $endpoint, $data) {
+        try {
             $headers = [
                 "X-Token" => $this->token,
                 "Accept" => "application/json",
@@ -175,11 +272,7 @@ class OddoApiClient implements OddoApiClientInterface
                 $endpoint .= "?" . http_build_query($data);
             }
 
-            return $this->client->request($method, $endpoint, $options);
-        };
-
-        try {
-            $response = $call();
+            $response = $this->client->request($method, $endpoint, $options);
 
             if ($response->getStatusCode() === 401) {
                 throw new \RuntimeException("Authentication token expired");

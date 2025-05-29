@@ -1,7 +1,12 @@
 <?php
-// src/Config/AppConfig.php
+
+declare(strict_types=1);
+
 namespace App\Config;
 
+/**
+ * Configuration centralisée de l'application
+ */
 class AppConfig
 {
     private array $config;
@@ -14,18 +19,39 @@ class AppConfig
             ],
             "jwt" => [
                 "secret" => $_ENV["JWT_SECRET"] ?? "",
-                "ttl" => 3600, // 1 hour
+                "ttl" => (int) ($_ENV["JWT_TTL"] ?? 3600),
             ],
             "cache" => [
-                "ttl" => 3600, // 1 hour
-                "enabled" => true,
+                "ttl" => (int) ($_ENV["CACHE_TTL"] ?? 3600),
+                "enabled" => filter_var(
+                    $_ENV["CACHE_ENABLED"] ?? "true",
+                    FILTER_VALIDATE_BOOLEAN
+                ),
             ],
             "storage" => [
-                "driver" => "file", // file, redis, database
-                "path" => __DIR__ . "/../../storage",
-                "prefix" => "oddo_",
+                "driver" => $_ENV["STORAGE_DRIVER"] ?? "file",
+                "path" => $_ENV["STORAGE_PATH"] ?? __DIR__ . "/../../storage",
+                "prefix" => $_ENV["STORAGE_PREFIX"] ?? "oddo_",
+                // Redis config
+                "host" => $_ENV["REDIS_HOST"] ?? "127.0.0.1",
+                "port" => (int) ($_ENV["REDIS_PORT"] ?? 6379),
+                "password" => $_ENV["REDIS_PASSWORD"] ?? "",
+                "database" => (int) ($_ENV["REDIS_DATABASE"] ?? 0),
+                // Database config
+                "dsn" => $_ENV["DATABASE_DSN"] ?? "",
+                "username" => $_ENV["DATABASE_USERNAME"] ?? "",
+                "db_password" => $_ENV["DATABASE_PASSWORD"] ?? "",
+            ],
+            "app" => [
+                "env" => $_ENV["APP_ENV"] ?? "production",
+                "debug" => filter_var(
+                    $_ENV["APP_DEBUG"] ?? "false",
+                    FILTER_VALIDATE_BOOLEAN
+                ),
             ],
         ];
+
+        $this->validate();
     }
 
     public function getOddoConfig(): array
@@ -58,6 +84,16 @@ class AppConfig
         return $this->config["storage"];
     }
 
+    public function getAppEnv(): string
+    {
+        return $this->config["app"]["env"];
+    }
+
+    public function isDebug(): bool
+    {
+        return $this->config["app"]["debug"];
+    }
+
     public function get(string $key, $default = null)
     {
         $keys = explode(".", $key);
@@ -71,5 +107,29 @@ class AppConfig
         }
 
         return $value;
+    }
+
+    /**
+     * Valide la configuration au démarrage
+     */
+    private function validate(): void
+    {
+        if (empty($this->config["jwt"]["secret"])) {
+            throw new \InvalidArgumentException(
+                "JWT_SECRET is required and cannot be empty"
+            );
+        }
+
+        if (strlen($this->config["jwt"]["secret"]) < 32) {
+            throw new \InvalidArgumentException(
+                "JWT_SECRET must be at least 32 characters long"
+            );
+        }
+
+        if (empty($this->config["oddo"]["base_uri"])) {
+            throw new \InvalidArgumentException(
+                "ODDO_BASE_URI is required and cannot be empty"
+            );
+        }
     }
 }
