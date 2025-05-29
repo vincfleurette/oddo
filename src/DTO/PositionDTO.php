@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\DTO;
 
 class PositionDTO
@@ -8,15 +10,15 @@ class PositionDTO
     public string $libInstrument;
     public float $valorisationAchatNette;
     public float $valeurMarcheDeviseSecurite;
-    public string $dateArrete;
+    public string $dateArrete; // Format ISO8601 pour iOS
     public float $quantityMinute;
     public float $pmvl;
     public float $pmvr;
     public float $weightMinute;
     public string $reportingAssetClassCode;
-    public float $performance; // Performance interne
-    public string $classActif; // Classe d'actif
-    public float $closingPriceInListingCurrency; // Prix de clôture
+    public float $performance;
+    public string $classActif;
+    public float $closingPriceInListingCurrency;
 
     public function __construct(array $d)
     {
@@ -28,15 +30,16 @@ class PositionDTO
         $this->valeurMarcheDeviseSecurite = floatval(
             $d["valeurMarcheDeviseSecurite"] ?? 0
         );
-        $this->dateArrete = $d["dateArrete"] ?? "";
+
+        // Convertir la date au format ISO8601 attendu par iOS
+        $this->dateArrete = $this->formatDateForIOS($d["dateArrete"] ?? "");
+
         $this->quantityMinute = floatval($d["quantityMinute"] ?? 0);
         $this->pmvl = floatval($d["pmvl"] ?? 0);
         $this->pmvr = floatval($d["pmvr"] ?? 0);
         $this->weightMinute = floatval($d["weightMinute"] ?? 0);
         $this->reportingAssetClassCode = $d["reportingAssetClassCode"] ?? "";
-
-        // Nouveaux champs
-        $this->performance = floatval($d["perf"] ?? 0); // Lecture depuis "perf"
+        $this->performance = floatval($d["perf"] ?? 0);
         $this->classActif = $d["classActif"] ?? "";
         $this->closingPriceInListingCurrency = floatval(
             $d["closingPriceInListingCurrency"] ?? 0
@@ -50,19 +53,41 @@ class PositionDTO
             "libInstrument" => $this->libInstrument,
             "valorisationAchatNette" => $this->valorisationAchatNette,
             "valeurMarcheDeviseSecurite" => $this->valeurMarcheDeviseSecurite,
-            "dateArrete" => $this->dateArrete,
+            "dateArrete" => $this->dateArrete, // Format ISO8601
             "quantityMinute" => $this->quantityMinute,
             "pmvl" => $this->pmvl,
             "pmvr" => $this->pmvr,
             "weightMinute" => $this->weightMinute,
             "reportingAssetClassCode" => $this->reportingAssetClassCode,
-            // CORRECTION: Garder "perf" pour la compatibilité avec addPerformanceStats
-            "perf" => $this->performance,
-            "performance" => $this->performance, // Aussi disponible sous ce nom
+            "performance" => $this->performance, // iOS s'attend à "performance"
             "classActif" => $this->classActif,
             "closingPriceInListingCurrency" =>
                 $this->closingPriceInListingCurrency,
         ];
+    }
+
+    /**
+     * Convertit une date au format ISO8601 attendu par iOS (yyyy-MM-dd'T'HH:mm:ss)
+     */
+    private function formatDateForIOS(string $dateInput): string
+    {
+        if (empty($dateInput)) {
+            return (new \DateTime())->format("Y-m-d\TH:i:s");
+        }
+
+        try {
+            // Si c'est déjà une date, la convertir
+            if ($dateInput instanceof \DateTime) {
+                return $dateInput->format("Y-m-d\TH:i:s");
+            }
+
+            // Si c'est une string, essayer de la parser
+            $date = new \DateTime($dateInput);
+            return $date->format("Y-m-d\TH:i:s");
+        } catch (\Exception $e) {
+            // En cas d'erreur, retourner la date actuelle
+            return (new \DateTime())->format("Y-m-d\TH:i:s");
+        }
     }
 
     /**
