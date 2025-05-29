@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+README.md
+*.md
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Tests (ne pas inclure en production)
+tests/
+coverage/
+
+# Scripts de développement
+debug-*.php
+test-*.php
+scripts/cleanup.php
+
+# IMPORTANT: Ne pas exclure ces dossiers nécessaires
+# vendor/ (géré par composer dans le Dockerfile)
+# src/ (code source requis)
+# public/ (point d'entrée requis)
+# storage/ (créé dans le Dockerfile)
