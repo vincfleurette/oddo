@@ -71,4 +71,56 @@ class CacheService
 
         return $data;
     }
+
+    public function getDetailedCacheInfo(string $userId): array
+    {
+        $accountsKey = $this->storage->getUserKey($userId, "accounts");
+        $accountsInfo = $this->storage->getInfo($accountsKey);
+
+        return [
+            "cachePath" => "user_cache_{$userId}",
+            "cacheExists" => $accountsInfo !== null,
+            "cacheTtl" => $this->defaultTtl,
+            "cacheTtlHuman" => $this->formatDuration($this->defaultTtl),
+            "cacheTimestamp" => $accountsInfo["timestamp"] ?? null,
+            "cacheAge" => $accountsInfo["age"] ?? null,
+            "cacheAgeHuman" => $accountsInfo["ageHuman"] ?? null,
+            "isExpired" => $accountsInfo["isExpired"] ?? false,
+            "expiresIn" => $accountsInfo["expiresIn"] ?? null,
+            "expiresInHuman" => $accountsInfo["expiresInHuman"] ?? null,
+            "accountsCount" => $accountsInfo
+                ? count($this->getUserAccounts($userId) ?? [])
+                : 0,
+            "fileSizeBytes" => $accountsInfo["size"] ?? 0,
+            "fileSizeHuman" => $this->formatFileSize(
+                $accountsInfo["size"] ?? 0
+            ),
+        ];
+    }
+
+    private function formatFileSize(int $bytes): string
+    {
+        $units = ["B", "KB", "MB", "GB"];
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+
+        $bytes /= 1 << 10 * $pow;
+
+        return round($bytes, 2) . " " . $units[$pow];
+    }
+
+    private function formatDuration(int $seconds): string
+    {
+        if ($seconds < 60) {
+            return "{$seconds}s";
+        }
+        if ($seconds < 3600) {
+            return floor($seconds / 60) . "m " . $seconds % 60 . "s";
+        }
+
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        return "{$hours}h {$minutes}m";
+    }
 }

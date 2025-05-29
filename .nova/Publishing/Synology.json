@@ -1,5 +1,9 @@
 {
   "identifier" : "86966016-90F4-4C55-B46D-4473536D200B",
+  "ignoredFilePatterns" : [
+    "public\/storage\/oddo_user_vfleurette_accounts.json",
+    "script\/cleanup.php"
+  ],
   "localPath" : ".",
   "remotePath" : "\/docker\/Oddo",
   "server" : "Synology",

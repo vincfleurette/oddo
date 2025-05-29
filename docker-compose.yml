@@ -1,3 +1,4 @@
+# Fix 5: docker-compose.yml (UPDATED avec Redis)
 version: "3.8"
 services:
     php:
@@ -6,9 +7,24 @@ services:
         volumes:
             - ./public:/var/www/html/public:ro
             - ./.env:/var/www/html/.env:ro
-            - ./storage:/var/www/html/storage
+            # Utiliser un volume temporaire pour le cache
+            - cache_volume:/tmp/oddo_cache
         environment:
             - COMPOSER_ALLOW_SUPERUSER=1
+            - PHP_DISPLAY_ERRORS=0
+            - PHP_LOG_ERRORS=1
+        networks:
+            - webnet
+        depends_on:
+            - redis
+
+    # Ajouter Redis pour un cache plus robuste
+    redis:
+        image: redis:7-alpine
+        restart: always
+        command: redis-server --appendonly yes
+        volumes:
+            - redis_data:/data
         networks:
             - webnet
 
@@ -27,3 +43,9 @@ services:
 networks:
     webnet:
         driver: bridge
+
+volumes:
+    cache_volume:
+        driver: local
+    redis_data:
+        driver: local

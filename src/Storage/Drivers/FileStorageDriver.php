@@ -1,4 +1,5 @@
 <?php
+// Fix 1: src/Storage/Drivers/FileStorageDriver.php (UPDATED)
 
 namespace App\Storage\Drivers;
 
@@ -12,9 +13,29 @@ class FileStorageDriver implements StorageDriverInterface
     {
         $this->path = $config["path"] ?? __DIR__ . "/../../../storage";
 
-        if (!is_dir($this->path)) {
-            mkdir($this->path, 0755, true);
+        // Vérifier si le dossier existe et est accessible en écriture
+        if (!$this->ensureStorageDirectory()) {
+            // Fallback vers /tmp si le dossier principal n'est pas accessible
+            $this->path = sys_get_temp_dir() . "/oddo_cache";
+            $this->ensureStorageDirectory();
         }
+    }
+
+    private function ensureStorageDirectory(): bool
+    {
+        if (!is_dir($this->path)) {
+            if (!@mkdir($this->path, 0755, true)) {
+                error_log("Failed to create storage directory: {$this->path}");
+                return false;
+            }
+        }
+
+        if (!is_writable($this->path)) {
+            error_log("Storage directory not writable: {$this->path}");
+            return false;
+        }
+
+        return true;
     }
 
     public function set(string $key, array $data, ?int $ttl = null): bool
@@ -23,13 +44,24 @@ class FileStorageDriver implements StorageDriverInterface
         $dir = dirname($filePath);
 
         if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+            if (!@mkdir($dir, 0755, true)) {
+                error_log("Failed to create directory: {$dir}");
+                return false;
+            }
         }
 
-        return file_put_contents(
+        $result = @file_put_contents(
             $filePath,
-            json_encode($data, JSON_PRETTY_PRINT)
-        ) !== false;
+            json_encode($data, JSON_PRETTY_PRINT),
+            LOCK_EX
+        );
+
+        if ($result === false) {
+            error_log("Failed to write cache file: {$filePath}");
+            return false;
+        }
+
+        return true;
     }
 
     public function get(string $key): ?array
@@ -40,8 +72,19 @@ class FileStorageDriver implements StorageDriverInterface
             return null;
         }
 
-        $content = file_get_contents($filePath);
-        return json_decode($content, true);
+        $content = @file_get_contents($filePath);
+        if ($content === false) {
+            error_log("Failed to read cache file: {$filePath}");
+            return null;
+        }
+
+        $data = json_decode($content, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log("Invalid JSON in cache file: {$filePath}");
+            return null;
+        }
+
+        return $data;
     }
 
     public function delete(string $key): bool
@@ -49,7 +92,7 @@ class FileStorageDriver implements StorageDriverInterface
         $filePath = $this->getFilePath($key);
 
         if (file_exists($filePath)) {
-            return unlink($filePath);
+            return @unlink($filePath);
         }
 
         return true;
@@ -66,8 +109,9 @@ class FileStorageDriver implements StorageDriverInterface
         $success = true;
 
         foreach ($files as $file) {
-            if (!unlink($file)) {
+            if (!@unlink($file)) {
                 $success = false;
+                error_log("Failed to delete cache file: {$file}");
             }
         }
 
@@ -86,5 +130,22 @@ class FileStorageDriver implements StorageDriverInterface
             "/" .
             str_replace(["/", "\\"], "_", $key) .
             ".json";
+    }
+
+    /**
+     * Get storage info for debugging
+     */
+    public function getStorageInfo(): array
+    {
+        return [
+            "path" => $this->path,
+            "exists" => is_dir($this->path),
+            "writable" => is_writable($this->path),
+            "permissions" => is_dir($this->path)
+                ? substr(sprintf("%o", fileperms($this->path)), -4)
+                : null,
+            "free_space" => disk_free_space($this->path),
+            "total_space" => disk_total_space($this->path),
+        ];
     }
 }
